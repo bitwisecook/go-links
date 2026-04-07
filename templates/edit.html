@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "header"}}
+    <title>{{if .IsNew}}New Link{{else}}Edit {{.Link.Name}}{{end}} - Go Links</title>
+</head>
+<body>
+    {{template "nav"}}
+    <main class="container">
+        <div class="edit-page">
+            <h1>{{if .IsNew}}New Link{{else}}Edit go/{{.Link.Name}}{{end}}</h1>
+            <form id="link-form" class="edit-form">
+                <input type="hidden" name="is_new" value="{{if .IsNew}}true{{else}}false{{end}}">
+
+                <div class="form-group">
+                    <label for="name">Name <span class="required">*</span></label>
+                    <div class="input-prefix">
+                        <span class="prefix">go/</span>
+                        <input type="text" id="name" name="name" required pattern="[a-z0-9\-]+"
+                            title="Lowercase letters, numbers, and hyphens only"
+                            value="{{if not .IsNew}}{{.Link.Name}}{{end}}"
+                            {{if not .IsNew}}readonly{{end}}
+                            placeholder="keyword">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="url">URL <span class="required">*</span></label>
+                    <input type="text" id="url" name="url" required
+                        value="{{if not .IsNew}}{{.Link.URL}}{{end}}"
+                        placeholder="https://example.com/search?q={args}">
+                    <small class="form-hint">Use <code>{args}</code> for arguments, or <code>{1}</code> <code>{2}</code> for positional args</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <input type="text" id="description" name="description"
+                        value="{{if not .IsNew}}{{.Link.Description}}{{end}}"
+                        placeholder="What does this link do?">
+                </div>
+
+                <div class="form-group">
+                    <label for="tags">Tags</label>
+                    <input type="text" id="tags" name="tags"
+                        value="{{if not .IsNew}}{{.Link.Tags}}{{end}}"
+                        placeholder="comma, separated, tags">
+                </div>
+
+                <div class="form-group">
+                    <label for="cidr_allow">IP Restrictions (CIDRs)</label>
+                    <textarea id="cidr_allow" name="cidr_allow" rows="3"
+                        placeholder="One CIDR per line, e.g.&#10;192.168.1.0/24&#10;10.0.0.0/8&#10;Leave empty for unrestricted access">{{if not .IsNew}}{{.Link.CIDRAllow}}{{end}}</textarea>
+                </div>
+
+                <details class="advanced-section">
+                    <summary>Advanced Options</summary>
+
+                    <div class="form-group">
+                        <label for="completions">Argument Completions</label>
+                        <textarea id="completions" name="completions" rows="5"
+                            placeholder="One per line: value|description&#10;severance|Severance (TV Show)&#10;seven|Se7en (Movie)">{{range .Completions}}{{.Value}}{{if .Description}}|{{.Description}}{{end}}
+{{end}}</textarea>
+                        <small class="form-hint">Used for OpenSearch tab completion suggestions</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="completions_js">Completions JS <span class="flag">Advanced</span></label>
+                        <textarea id="completions_js" name="completions_js" rows="5" class="code-input"
+                            placeholder="// Function body: receives 'query', return Promise of [{value, description}]&#10;return fetch('/api/endpoint?q=' + encodeURIComponent(query))&#10;  .then(r => r.json())&#10;  .then(d => d.map(i => ({value: i.name, description: i.type})))">{{if not .IsNew}}{{.Link.CompletionsJS}}{{end}}</textarea>
+                        <small class="form-hint">Client-side JS for dynamic completions on the explore page</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="js_snippet">JS Snippet <span class="flag">Advanced</span></label>
+                        <textarea id="js_snippet" name="js_snippet" rows="8" class="code-input"
+                            placeholder="// Runs instead of redirect. Variables: args, url&#10;// Example: conditional redirect&#10;if (args === 'new') {&#10;  window.location = url + '/new';&#10;} else {&#10;  window.location = url + '/search?q=' + encodeURIComponent(args);&#10;}">{{if not .IsNew}}{{.Link.JSSnippet}}{{end}}</textarea>
+                        <small class="form-hint">Executes in the browser instead of a redirect. Has access to <code>args</code> and <code>url</code> variables.</small>
+                    </div>
+                </details>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="save-btn">
+                        <span class="btn-text">Save</span>
+                        <span class="btn-spinner" hidden></span>
+                        <span class="btn-tick" hidden>&#10003;</span>
+                        <span class="btn-cross" hidden>&#10007;</span>
+                    </button>
+                    <a href="/admin" class="btn">Cancel</a>
+                    <div id="save-status" class="save-status" hidden></div>
+                </div>
+            </form>
+        </div>
+    </main>
+    {{template "scripts"}}
+</body>
+</html>
