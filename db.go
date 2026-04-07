@@ -45,7 +45,7 @@ func NewStore(dbPath string) (*Store, error) {
 func (s *Store) migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS links (
-			name          TEXT PRIMARY KEY,
+			name          TEXT PRIMARY KEY COLLATE NOCASE,
 			url           TEXT NOT NULL,
 			description   TEXT DEFAULT '',
 			tags          TEXT DEFAULT '',
@@ -57,8 +57,8 @@ func (s *Store) migrate() error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS completions_content (
 			rowid       INTEGER PRIMARY KEY AUTOINCREMENT,
-			link_name   TEXT NOT NULL REFERENCES links(name) ON DELETE CASCADE,
-			value       TEXT NOT NULL,
+			link_name   TEXT NOT NULL COLLATE NOCASE REFERENCES links(name) ON DELETE CASCADE,
+			value       TEXT NOT NULL COLLATE NOCASE,
 			description TEXT DEFAULT ''
 		)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS completions USING fts5(
@@ -98,11 +98,13 @@ func (s *Store) migrate() error {
 	return nil
 }
 
+// Get retrieves a link by name (case-insensitive).
 func (s *Store) Get(name string) (*Link, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
 	link := &Link{}
 	err := s.db.QueryRow(
 		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, created_at, updated_at
-		 FROM links WHERE name = ?`, name,
+		 FROM links WHERE name = ? COLLATE NOCASE`, name,
 	).Scan(&link.Name, &link.URL, &link.Description, &link.Tags, &link.CIDRAllow,
 		&link.JSSnippet, &link.CompletionsJS, &link.CreatedAt, &link.UpdatedAt)
 	if err == sql.ErrNoRows {
@@ -135,6 +137,7 @@ func (s *Store) All() ([]*Link, error) {
 }
 
 func (s *Store) Save(link *Link) error {
+	link.Name = strings.ToLower(strings.TrimSpace(link.Name))
 	now := time.Now().UTC()
 	link.UpdatedAt = now
 
@@ -159,12 +162,13 @@ func (s *Store) Save(link *Link) error {
 	}
 
 	// Update links_fts within the same transaction
-	if _, err := tx.Exec(`DELETE FROM links_fts WHERE name = ?`, link.Name); err != nil {
+	// Use lowercase for FTS to ensure case-insensitive matching
+	if _, err := tx.Exec(`DELETE FROM links_fts WHERE name = ? COLLATE NOCASE`, link.Name); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(
 		`INSERT INTO links_fts (name, description, tags) VALUES (?, ?, ?)`,
-		link.Name, link.Description, link.Tags,
+		strings.ToLower(link.Name), strings.ToLower(link.Description), strings.ToLower(link.Tags),
 	); err != nil {
 		return err
 	}
@@ -173,19 +177,21 @@ func (s *Store) Save(link *Link) error {
 }
 
 func (s *Store) Delete(name string) error {
+	name = strings.ToLower(strings.TrimSpace(name))
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM links_fts WHERE name = ?`, name); err != nil {
+	if _, err := tx.Exec(`DELETE FROM links_fts WHERE name = ? COLLATE NOCASE`, name); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM completions_content WHERE link_name = ?`, name); err != nil {
+	if _, err := tx.Exec(`DELETE FROM completions_content WHERE link_name = ? COLLATE NOCASE`, name); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM links WHERE name = ?`, name); err != nil {
+	if _, err := tx.Exec(`DELETE FROM links WHERE name = ? COLLATE NOCASE`, name); err != nil {
 		return err
 	}
 
@@ -196,14 +202,15 @@ func (s *Store) SearchLinks(query string) ([]*Link, error) {
 	if query == "" {
 		return s.All()
 	}
-	// Use FTS5 prefix search
+	query = strings.ToLower(query)
+	// Use FTS5 prefix search (FTS5 is case-insensitive by default)
 	ftsQuery := strings.ReplaceAll(query, `"`, `""`)
 	ftsQuery = `"` + ftsQuery + `"*`
 
 	rows, err := s.db.Query(
 		`SELECT l.name, l.url, l.description, l.tags, l.cidr_allow, l.js_snippet, l.completions_js, l.created_at, l.updated_at
 		 FROM links l
-		 JOIN links_fts f ON l.name = f.name
+		 JOIN links_fts f ON l.name = f.name COLLATE NOCASE
 		 WHERE links_fts MATCH ?
 		 ORDER BY rank`, ftsQuery)
 	if err != nil {
@@ -227,7 +234,7 @@ func (s *Store) searchLinksFallback(query string) ([]*Link, error) {
 	pattern := "%" + query + "%"
 	rows, err := s.db.Query(
 		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, created_at, updated_at
-		 FROM links WHERE name LIKE ? OR description LIKE ? OR tags LIKE ?
+		 FROM links WHERE name LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE OR tags LIKE ? COLLATE NOCASE
 		 ORDER BY name`, pattern, pattern, pattern)
 	if err != nil {
 		return nil, err
@@ -245,14 +252,17 @@ func (s *Store) searchLinksFallback(query string) ([]*Link, error) {
 	return links, rows.Err()
 }
 
+// SearchCompletions searches for completions case-insensitively.
 func (s *Store) SearchCompletions(linkName, prefix string) ([]Completion, error) {
+	linkName = strings.ToLower(strings.TrimSpace(linkName))
 	if prefix == "" {
 		return s.allCompletions(linkName)
 	}
+	prefix = strings.ToLower(prefix)
 	ftsQuery := `"` + strings.ReplaceAll(prefix, `"`, `""`) + `"*`
 	rows, err := s.db.Query(
 		`SELECT value, description FROM completions
-		 WHERE link_name = ? AND completions MATCH ?
+		 WHERE link_name = ? COLLATE NOCASE AND completions MATCH ?
 		 ORDER BY rank LIMIT 10`, linkName, ftsQuery)
 	if err != nil {
 		// Fallback to LIKE
@@ -273,7 +283,7 @@ func (s *Store) SearchCompletions(linkName, prefix string) ([]Completion, error)
 func (s *Store) searchCompletionsFallback(linkName, prefix string) ([]Completion, error) {
 	rows, err := s.db.Query(
 		`SELECT value, description FROM completions_content
-		 WHERE link_name = ? AND value LIKE ?
+		 WHERE link_name = ? COLLATE NOCASE AND value LIKE ? COLLATE NOCASE
 		 ORDER BY value LIMIT 10`, linkName, prefix+"%")
 	if err != nil {
 		return nil, err
@@ -291,9 +301,10 @@ func (s *Store) searchCompletionsFallback(linkName, prefix string) ([]Completion
 }
 
 func (s *Store) allCompletions(linkName string) ([]Completion, error) {
+	linkName = strings.ToLower(strings.TrimSpace(linkName))
 	rows, err := s.db.Query(
 		`SELECT value, description FROM completions_content
-		 WHERE link_name = ? ORDER BY value LIMIT 20`, linkName)
+		 WHERE link_name = ? COLLATE NOCASE ORDER BY value LIMIT 20`, linkName)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +320,27 @@ func (s *Store) allCompletions(linkName string) ([]Completion, error) {
 	return completions, rows.Err()
 }
 
+// SetCompletions replaces all completions for a link, deduplicating by lowercase value.
 func (s *Store) SetCompletions(linkName string, completions []Completion) error {
+	linkName = strings.ToLower(strings.TrimSpace(linkName))
+
+	// Deduplicate by lowercase value, last occurrence wins
+	seen := make(map[string]int) // lowercase value -> index in deduped
+	var deduped []Completion
+	for _, c := range completions {
+		key := strings.ToLower(strings.TrimSpace(c.Value))
+		if key == "" {
+			continue
+		}
+		if idx, exists := seen[key]; exists {
+			// Replace with later occurrence (keeps latest description)
+			deduped[idx] = c
+		} else {
+			seen[key] = len(deduped)
+			deduped = append(deduped, c)
+		}
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -317,12 +348,12 @@ func (s *Store) SetCompletions(linkName string, completions []Completion) error 
 	defer tx.Rollback()
 
 	// Delete existing
-	if _, err := tx.Exec(`DELETE FROM completions_content WHERE link_name = ?`, linkName); err != nil {
+	if _, err := tx.Exec(`DELETE FROM completions_content WHERE link_name = ? COLLATE NOCASE`, linkName); err != nil {
 		return err
 	}
 
-	// Insert new
-	for _, c := range completions {
+	// Insert deduplicated completions
+	for _, c := range deduped {
 		if _, err := tx.Exec(
 			`INSERT INTO completions_content (link_name, value, description) VALUES (?, ?, ?)`,
 			linkName, c.Value, c.Description,

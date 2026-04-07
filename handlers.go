@@ -204,7 +204,7 @@ func (s *server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := strings.ToLower(strings.TrimSpace(r.PathValue("name")))
 	var link *Link
 	var completions []Completion
 

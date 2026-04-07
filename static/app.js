@@ -25,7 +25,7 @@
                 return;
             }
             const filtered = allLinks.filter(l =>
-                l.name.includes(q) ||
+                l.name.toLowerCase().includes(q) ||
                 (l.description && l.description.toLowerCase().includes(q)) ||
                 (l.tags && l.tags.some(t => t.toLowerCase().includes(q)))
             );
