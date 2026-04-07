@@ -7,6 +7,7 @@ type Config struct {
 	DBPath     string
 	Host       string
 	TrustProxy bool
+	AdminCIDR  string // CIDR allowlist for admin endpoints, empty = unrestricted
 }
 
 func parseFlags() *Config {
@@ -15,6 +16,7 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.DBPath, "db", "golinks.db", "path to SQLite database")
 	flag.StringVar(&cfg.Host, "host", "", "hostname for OpenSearch URLs (default: from request)")
 	flag.BoolVar(&cfg.TrustProxy, "trust-proxy", false, "trust X-Forwarded-For/X-Real-IP headers")
+	flag.StringVar(&cfg.AdminCIDR, "admin-cidr", "", "CIDR allowlist for admin access (e.g. 192.168.1.0/24,10.0.0.0/8). Empty = unrestricted")
 	flag.Parse()
 	return cfg
 }

@@ -3,22 +3,28 @@ package main
 import (
 	"encoding/json"
 	"html/template"
+	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
-var reservedNames = map[string]bool{
-	"admin": true, "api": true, "static": true,
-	"opensearch.xml": true, "favicon.ico": true,
-}
+var (
+	reservedNames = map[string]bool{
+		"admin": true, "api": true, "static": true,
+		"opensearch.xml": true, "favicon.ico": true,
+	}
+	validNameRe = regexp.MustCompile(`^[a-z0-9\-]+$`)
+)
 
 type server struct {
-	store  *Store
-	cfg    *Config
-	tmpls  *template.Template
+	store     *Store
+	cfg       *Config
+	tmpls     *template.Template
+	adminNets []*net.IPNet // parsed admin CIDRs
 }
 
 func newServer(store *Store, cfg *Config) *server {
@@ -27,7 +33,33 @@ func newServer(store *Store, cfg *Config) *server {
 		cfg:   cfg,
 		tmpls: parseTemplates(),
 	}
+	// Parse admin CIDRs
+	if cfg.AdminCIDR != "" {
+		for _, cidr := range strings.Split(cfg.AdminCIDR, ",") {
+			cidr = strings.TrimSpace(cidr)
+			if cidr == "" {
+				continue
+			}
+			_, network, err := net.ParseCIDR(cidr)
+			if err == nil {
+				s.adminNets = append(s.adminNets, network)
+			}
+		}
+	}
 	return s
+}
+
+func (s *server) isAdminAllowed(r *http.Request) bool {
+	if len(s.adminNets) == 0 {
+		return true // no restriction configured
+	}
+	clientIP := getClientIP(r)
+	for _, network := range s.adminNets {
+		if network.Contains(clientIP) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *server) handler() http.Handler {
@@ -38,11 +70,11 @@ func (s *server) handler() http.Handler {
 
 	// Explicit routes
 	mux.HandleFunc("GET /{$}", s.handleExplore)
-	mux.HandleFunc("GET /admin", s.handleAdmin)
-	mux.HandleFunc("GET /admin/new", s.handleEdit)
-	mux.HandleFunc("GET /admin/edit/{name}", s.handleEdit)
-	mux.HandleFunc("POST /admin/save", s.handleSave)
-	mux.HandleFunc("POST /admin/delete/{name}", s.handleDelete)
+	mux.HandleFunc("GET /admin", s.adminGuard(s.handleAdmin))
+	mux.HandleFunc("GET /admin/new", s.adminGuard(s.handleEdit))
+	mux.HandleFunc("GET /admin/edit/{name}", s.adminGuard(s.handleEdit))
+	mux.HandleFunc("POST /admin/save", s.adminGuard(s.handleSave))
+	mux.HandleFunc("POST /admin/delete/{name}", s.adminGuard(s.handleDelete))
 	mux.HandleFunc("GET /opensearch.xml", s.handleOpenSearch)
 	mux.HandleFunc("GET /api/suggestions", s.handleSuggestions)
 	mux.HandleFunc("GET /api/links", s.handleAPILinks)
@@ -52,6 +84,17 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /{keyword}/{args...}", s.handleRedirect)
 
 	return ipMiddleware(s.cfg.TrustProxy, mux)
+}
+
+// adminGuard wraps a handler with admin CIDR check.
+func (s *server) adminGuard(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.isAdminAllowed(r) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		h(w, r)
+	}
 }
 
 func (s *server) handleExplore(w http.ResponseWriter, r *http.Request) {
@@ -94,11 +137,12 @@ func (s *server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 
 	// JS snippet execution
 	if link.JSSnippet != "" {
+		// Use PathEscape to encode spaces as %20 (not +) for correct JS decoding
 		s.renderTemplate(w, "redirect.html", map[string]interface{}{
 			"Link":        link,
 			"Args":        args,
-			"ArgsEncoded": url.QueryEscape(args),
-			"URLEncoded":  url.QueryEscape(link.URL),
+			"ArgsEncoded": url.PathEscape(args),
+			"URLEncoded":  url.PathEscape(link.URL),
 		})
 		return
 	}
@@ -181,6 +225,14 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Name is required"})
 		return
 	}
+	if !validNameRe.MatchString(name) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Name must contain only lowercase letters, numbers, and hyphens"})
+		return
+	}
+	if len(name) > 64 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Name must be 64 characters or fewer"})
+		return
+	}
 	if reservedNames[name] {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "'" + name + "' is a reserved name"})
 		return
@@ -191,6 +243,8 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "URL is required"})
 		return
 	}
+
+	clientIP := getClientIP(r)
 
 	// Check if this is a new link or edit
 	isNew := r.FormValue("is_new") == "true"
@@ -210,6 +264,11 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 		link, err = s.store.Get(name)
 		if err != nil || link == nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Link not found"})
+			return
+		}
+		// Enforce CIDR visibility: only users who can see the link can edit it
+		if !isLinkVisible(link, clientIP) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Access denied"})
 			return
 		}
 	}
@@ -258,6 +317,18 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce CIDR visibility: only users who can see the link can delete it
+	link, err := s.store.Get(name)
+	if err != nil || link == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Link not found"})
+		return
+	}
+	clientIP := getClientIP(r)
+	if !isLinkVisible(link, clientIP) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Access denied"})
+		return
+	}
+
 	if err := s.store.Delete(name); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to delete: " + err.Error()})
 		return
@@ -267,13 +338,13 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 type apiLink struct {
-	Name          string   `json:"name"`
-	URL           string   `json:"url"`
-	Description   string   `json:"description"`
-	Tags          []string `json:"tags"`
-	HasArgs       bool     `json:"has_args"`
-	HasJS         bool     `json:"has_js"`
-	Restricted    bool     `json:"restricted"`
+	Name        string   `json:"name"`
+	URL         string   `json:"url"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	HasArgs     bool     `json:"has_args"`
+	HasJS       bool     `json:"has_js"`
+	Restricted  bool     `json:"restricted"`
 }
 
 func (s *server) handleAPILinks(w http.ResponseWriter, r *http.Request) {

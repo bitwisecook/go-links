@@ -88,7 +88,7 @@
                             <label for="completions_js">Completions JS <span class="flag">Advanced</span></label>
                             <textarea id="completions_js" name="completions_js" rows="5" class="code-input"
                                 placeholder="// Function body: receives 'query', return Promise of [{value, description}]&#10;return fetch('/api/endpoint?q=' + encodeURIComponent(query))&#10;  .then(r => r.json())&#10;  .then(d => d.map(i => ({value: i.name, description: i.type})))">{{if not .IsNew}}{{.Link.CompletionsJS}}{{end}}</textarea>
-                            <small class="form-hint">Client-side JS for dynamic completions on the explore page</small>
+                            <small class="form-hint">Client-side JS for dynamic completions (not yet implemented in explore page)</small>
                         </div>
                     </div>
 

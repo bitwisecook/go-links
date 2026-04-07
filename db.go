@@ -83,13 +83,11 @@ func (s *Store) migrate() error {
 			INSERT INTO completions(rowid, link_name, value, description)
 			VALUES (new.rowid, new.link_name, new.value, new.description);
 		END`,
-		// FTS for link search
+		// FTS for link search (standalone, not external content)
 		`CREATE VIRTUAL TABLE IF NOT EXISTS links_fts USING fts5(
 			name,
 			description,
-			tags,
-			content='links',
-			content_rowid='rowid'
+			tags
 		)`,
 	}
 	for _, stmt := range stmts {
@@ -140,7 +138,13 @@ func (s *Store) Save(link *Link) error {
 	now := time.Now().UTC()
 	link.UpdatedAt = now
 
-	_, err := s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(
 		`INSERT INTO links (name, url, description, tags, cidr_allow, js_snippet, completions_js, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
@@ -154,20 +158,38 @@ func (s *Store) Save(link *Link) error {
 		return err
 	}
 
-	// Update links_fts
-	s.db.Exec(`DELETE FROM links_fts WHERE name = ?`, link.Name)
-	_, err = s.db.Exec(
+	// Update links_fts within the same transaction
+	if _, err := tx.Exec(`DELETE FROM links_fts WHERE name = ?`, link.Name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
 		`INSERT INTO links_fts (name, description, tags) VALUES (?, ?, ?)`,
 		link.Name, link.Description, link.Tags,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *Store) Delete(name string) error {
-	s.db.Exec(`DELETE FROM links_fts WHERE name = ?`, name)
-	s.db.Exec(`DELETE FROM completions_content WHERE link_name = ?`, name)
-	_, err := s.db.Exec(`DELETE FROM links WHERE name = ?`, name)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM links_fts WHERE name = ?`, name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM completions_content WHERE link_name = ?`, name); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM links WHERE name = ?`, name); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *Store) SearchLinks(query string) ([]*Link, error) {

@@ -4,21 +4,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
+
+func (s *server) requestScheme(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if s.cfg.TrustProxy {
+		if fProto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); fProto != "" {
+			// Take first value if comma-separated
+			if idx := strings.IndexByte(fProto, ','); idx >= 0 {
+				fProto = strings.TrimSpace(fProto[:idx])
+			}
+			if fProto == "http" || fProto == "https" {
+				scheme = fProto
+			}
+		}
+	}
+	return scheme
+}
 
 func (s *server) handleOpenSearch(w http.ResponseWriter, r *http.Request) {
 	host := s.cfg.Host
 	if host == "" {
 		host = r.Host
 	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if fProto := r.Header.Get("X-Forwarded-Proto"); fProto != "" {
-		scheme = fProto
-	}
+	scheme := s.requestScheme(r)
 
 	w.Header().Set("Content-Type", "application/opensearchdescription+xml; charset=utf-8")
 	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
@@ -45,18 +59,12 @@ func (s *server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 	if host == "" {
 		host = r.Host
 	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if fProto := r.Header.Get("X-Forwarded-Proto"); fProto != "" {
-		scheme = fProto
-	}
+	scheme := s.requestScheme(r)
 	baseURL := scheme + "://" + host
 
 	// Check if query contains a space -> two-level completion
 	if idx := strings.IndexByte(query, ' '); idx >= 0 {
-		keyword := query[:idx]
+		keyword := strings.ToLower(query[:idx])
 		argPrefix := query[idx+1:]
 
 		link, err := s.store.Get(keyword)
@@ -66,13 +74,13 @@ func (s *server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 				for _, c := range completions {
 					suggestions = append(suggestions, keyword+" "+c.Value)
 					descriptions = append(descriptions, c.Description)
-					urls = append(urls, baseURL+"/"+keyword+"/"+c.Value)
+					urls = append(urls, baseURL+"/"+url.PathEscape(keyword)+"/"+url.PathEscape(c.Value))
 				}
 			}
 		}
 	} else if query != "" {
 		// First-level: search link names
-		links, err := s.store.SearchLinks(query)
+		links, err := s.store.SearchLinks(strings.ToLower(query))
 		if err == nil {
 			visible := filterVisibleLinks(links, clientIP)
 			for _, l := range visible {
@@ -85,7 +93,7 @@ func (s *server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 					desc = l.URL
 				}
 				descriptions = append(descriptions, desc)
-				urls = append(urls, baseURL+"/"+l.Name)
+				urls = append(urls, baseURL+"/"+url.PathEscape(l.Name))
 			}
 		}
 	}
@@ -93,6 +101,5 @@ func (s *server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
 	// OpenSearch Suggestions format: [query, [suggestions], [descriptions], [urls]]
 	result := []interface{}{query, suggestions, descriptions, urls}
 	w.Header().Set("Content-Type", "application/x-suggestions+json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(result)
 }
