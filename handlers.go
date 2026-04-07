@@ -297,7 +297,20 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 	link.URL = urlVal
 	link.Description = strings.TrimSpace(r.FormValue("description"))
 	link.Tags = strings.TrimSpace(r.FormValue("tags"))
-	link.CIDRAllow = strings.TrimSpace(r.FormValue("cidr_allow"))
+	cidrAllow := strings.TrimSpace(r.FormValue("cidr_allow"))
+	if cidrAllow != "" {
+		for _, line := range strings.Split(cidrAllow, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if _, _, err := net.ParseCIDR(line); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid CIDR: " + line})
+				return
+			}
+		}
+	}
+	link.CIDRAllow = cidrAllow
 	link.JSSnippet = r.FormValue("js_snippet")
 	link.CompletionsJS = r.FormValue("completions_js")
 	link.AppType = strings.ToLower(strings.TrimSpace(r.FormValue("app_type")))

@@ -38,12 +38,17 @@ var appDetectors = []struct {
 	{"openwebui", detectOpenWebUI},
 }
 
+// tlsSkipVerify is set from Config at startup.
+var tlsSkipVerify bool
+
 func newDetectClient() *http.Client {
+	transport := &http.Transport{}
+	if tlsSkipVerify {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
 	return &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
+		Timeout:   5 * time.Second,
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 3 {
 				return fmt.Errorf("too many redirects")

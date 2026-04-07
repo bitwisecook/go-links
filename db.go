@@ -109,6 +109,18 @@ func (s *Store) migrate() error {
 		s.db.Exec(m) // ignore errors (column already exists)
 	}
 
+	// Rebuild FTS index from links table to ensure consistency
+	// (handles upgrades and any out-of-sync state)
+	if _, err := s.db.Exec(`DELETE FROM links_fts`); err != nil {
+		return fmt.Errorf("clear links_fts: %w", err)
+	}
+	if _, err := s.db.Exec(`
+		INSERT INTO links_fts(name, description, tags)
+		SELECT LOWER(name), LOWER(description), LOWER(tags) FROM links
+	`); err != nil {
+		return fmt.Errorf("rebuild links_fts: %w", err)
+	}
+
 	return nil
 }
 
@@ -223,11 +235,11 @@ func (s *Store) SearchLinks(query string) ([]*Link, error) {
 	ftsQuery = `"` + ftsQuery + `"*`
 
 	rows, err := s.db.Query(
-		`SELECT l.name, l.url, l.description, l.tags, l.cidr_allow, l.js_snippet, l.completions_js, l.created_at, l.updated_at
+		`SELECT l.name, l.url, l.description, l.tags, l.cidr_allow, l.js_snippet, l.completions_js, l.app_type, l.app_api_key, l.created_at, l.updated_at
 		 FROM links l
 		 JOIN links_fts f ON l.name = f.name COLLATE NOCASE
-		 WHERE links_fts MATCH ?
-		 ORDER BY rank`, ftsQuery)
+		 WHERE f MATCH ?
+		 ORDER BY bm25(f)`, ftsQuery)
 	if err != nil {
 		// Fallback to LIKE search if FTS fails
 		return s.searchLinksFallback(query)
