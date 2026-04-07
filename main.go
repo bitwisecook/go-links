@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 	"net/http"
+	"time"
 )
 
 //go:embed static/*
@@ -20,6 +21,9 @@ func main() {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer store.Close()
+
+	// Start background completion refresher for app integrations
+	StartCompletionRefresher(store, 1*time.Hour)
 
 	srv := newServer(store, cfg)
 	handler := srv.handler()

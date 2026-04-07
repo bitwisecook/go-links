@@ -11,6 +11,7 @@
             <h1>{{if .IsNew}}New Link{{else}}Edit go/{{.Link.Name}}{{end}}</h1>
             <form id="link-form" class="edit-form" data-is-new="{{if .IsNew}}true{{else}}false{{end}}">
                 <input type="hidden" name="is_new" value="{{if .IsNew}}true{{else}}false{{end}}">
+                <input type="hidden" name="app_type" id="app_type" value="{{if not .IsNew}}{{.Link.AppType}}{{end}}">
 
                 <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="name">
                     <div class="row-indicator"></div>
@@ -34,7 +35,8 @@
                         <input type="text" id="url" name="url" required
                             value="{{if not .IsNew}}{{.Link.URL}}{{end}}"
                             placeholder="https://example.com/search?q={args}">
-                        <small class="form-hint">Use <code>{args}</code> for arguments, or <code>{1}</code> <code>{2}</code> for positional args</small>
+                        <div id="app-detect-status" class="app-detect-status" hidden></div>
+                        <small class="form-hint">Use <code>{args}</code> for arguments, or <code>{1}</code> <code>{2}</code> for positional args. Paste a URL to auto-detect the app.</small>
                     </div>
                 </div>
 
@@ -58,6 +60,19 @@
                     </div>
                 </div>
 
+                <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="app_api_key" id="api-key-row"
+                    {{if .IsNew}}hidden{{else if not .Link.AppType}}hidden{{end}}>
+                    <div class="row-indicator"></div>
+                    <div class="form-group">
+                        <label for="app_api_key">API Key <span id="api-key-hint" class="form-hint-inline">{{if not .IsNew}}{{if .Link.AppType}}(for {{.Link.AppType}}){{end}}{{end}}</span></label>
+                        <input type="password" id="app_api_key" name="app_api_key"
+                            value="{{if not .IsNew}}{{.Link.AppAPIKey}}{{end}}"
+                            placeholder="Paste API key for app completions"
+                            autocomplete="off">
+                        <small class="form-hint" id="api-key-help"></small>
+                    </div>
+                </div>
+
                 <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="cidr_allow">
                     <div class="row-indicator"></div>
                     <div class="form-group">
@@ -78,7 +93,7 @@
                             <textarea id="completions" name="completions" rows="5"
                                 placeholder="One per line: value|description&#10;severance|Severance (TV Show)&#10;seven|Se7en (Movie)">{{range .Completions}}{{.Value}}{{if .Description}}|{{.Description}}{{end}}
 {{end}}</textarea>
-                            <small class="form-hint">Used for OpenSearch tab completion suggestions</small>
+                            <small class="form-hint">Used for OpenSearch tab completion suggestions. Auto-populated for recognized apps with an API key.</small>
                         </div>
                     </div>
 

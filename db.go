@@ -17,6 +17,8 @@ type Link struct {
 	CIDRAllow     string
 	JSSnippet     string
 	CompletionsJS string
+	AppType       string // detected app type: jellyfin, plex, sonarr, etc.
+	AppAPIKey     string // API key for app completions
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
@@ -52,6 +54,8 @@ func (s *Store) migrate() error {
 			cidr_allow    TEXT DEFAULT '',
 			js_snippet    TEXT DEFAULT '',
 			completions_js TEXT DEFAULT '',
+			app_type      TEXT DEFAULT '',
+			app_api_key   TEXT DEFAULT '',
 			created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -95,6 +99,16 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("exec %q: %w", stmt[:60], err)
 		}
 	}
+
+	// Migrations for existing databases: add new columns if missing
+	migrations := []string{
+		`ALTER TABLE links ADD COLUMN app_type TEXT DEFAULT ''`,
+		`ALTER TABLE links ADD COLUMN app_api_key TEXT DEFAULT ''`,
+	}
+	for _, m := range migrations {
+		s.db.Exec(m) // ignore errors (column already exists)
+	}
+
 	return nil
 }
 
@@ -103,10 +117,10 @@ func (s *Store) Get(name string) (*Link, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 	link := &Link{}
 	err := s.db.QueryRow(
-		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, created_at, updated_at
+		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, app_type, app_api_key, created_at, updated_at
 		 FROM links WHERE name = ? COLLATE NOCASE`, name,
 	).Scan(&link.Name, &link.URL, &link.Description, &link.Tags, &link.CIDRAllow,
-		&link.JSSnippet, &link.CompletionsJS, &link.CreatedAt, &link.UpdatedAt)
+		&link.JSSnippet, &link.CompletionsJS, &link.AppType, &link.AppAPIKey, &link.CreatedAt, &link.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -118,7 +132,7 @@ func (s *Store) Get(name string) (*Link, error) {
 
 func (s *Store) All() ([]*Link, error) {
 	rows, err := s.db.Query(
-		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, created_at, updated_at
+		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, app_type, app_api_key, created_at, updated_at
 		 FROM links ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -128,7 +142,7 @@ func (s *Store) All() ([]*Link, error) {
 	for rows.Next() {
 		link := &Link{}
 		if err := rows.Scan(&link.Name, &link.URL, &link.Description, &link.Tags, &link.CIDRAllow,
-			&link.JSSnippet, &link.CompletionsJS, &link.CreatedAt, &link.UpdatedAt); err != nil {
+			&link.JSSnippet, &link.CompletionsJS, &link.AppType, &link.AppAPIKey, &link.CreatedAt, &link.UpdatedAt); err != nil {
 			return nil, err
 		}
 		links = append(links, link)
@@ -148,14 +162,15 @@ func (s *Store) Save(link *Link) error {
 	defer tx.Rollback()
 
 	_, err = tx.Exec(
-		`INSERT INTO links (name, url, description, tags, cidr_allow, js_snippet, completions_js, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO links (name, url, description, tags, cidr_allow, js_snippet, completions_js, app_type, app_api_key, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 			url=excluded.url, description=excluded.description, tags=excluded.tags,
 			cidr_allow=excluded.cidr_allow, js_snippet=excluded.js_snippet,
-			completions_js=excluded.completions_js, updated_at=excluded.updated_at`,
+			completions_js=excluded.completions_js, app_type=excluded.app_type,
+			app_api_key=excluded.app_api_key, updated_at=excluded.updated_at`,
 		link.Name, link.URL, link.Description, link.Tags, link.CIDRAllow,
-		link.JSSnippet, link.CompletionsJS, link.CreatedAt, now,
+		link.JSSnippet, link.CompletionsJS, link.AppType, link.AppAPIKey, link.CreatedAt, now,
 	)
 	if err != nil {
 		return err
@@ -222,7 +237,7 @@ func (s *Store) SearchLinks(query string) ([]*Link, error) {
 	for rows.Next() {
 		link := &Link{}
 		if err := rows.Scan(&link.Name, &link.URL, &link.Description, &link.Tags, &link.CIDRAllow,
-			&link.JSSnippet, &link.CompletionsJS, &link.CreatedAt, &link.UpdatedAt); err != nil {
+			&link.JSSnippet, &link.CompletionsJS, &link.AppType, &link.AppAPIKey, &link.CreatedAt, &link.UpdatedAt); err != nil {
 			return nil, err
 		}
 		links = append(links, link)
@@ -233,7 +248,7 @@ func (s *Store) SearchLinks(query string) ([]*Link, error) {
 func (s *Store) searchLinksFallback(query string) ([]*Link, error) {
 	pattern := "%" + query + "%"
 	rows, err := s.db.Query(
-		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, created_at, updated_at
+		`SELECT name, url, description, tags, cidr_allow, js_snippet, completions_js, app_type, app_api_key, created_at, updated_at
 		 FROM links WHERE name LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE OR tags LIKE ? COLLATE NOCASE
 		 ORDER BY name`, pattern, pattern, pattern)
 	if err != nil {
@@ -244,7 +259,7 @@ func (s *Store) searchLinksFallback(query string) ([]*Link, error) {
 	for rows.Next() {
 		link := &Link{}
 		if err := rows.Scan(&link.Name, &link.URL, &link.Description, &link.Tags, &link.CIDRAllow,
-			&link.JSSnippet, &link.CompletionsJS, &link.CreatedAt, &link.UpdatedAt); err != nil {
+			&link.JSSnippet, &link.CompletionsJS, &link.AppType, &link.AppAPIKey, &link.CreatedAt, &link.UpdatedAt); err != nil {
 			return nil, err
 		}
 		links = append(links, link)

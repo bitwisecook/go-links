@@ -27,7 +27,7 @@
                     <tbody>
                         {{range .Links}}
                         <tr id="row-{{.Name}}">
-                            <td><a href="/{{.Name}}" class="link-name">go/{{.Name}}</a></td>
+                            <td><a href="/{{.Name}}" class="link-name">{{if .AppType}}<span class="app-icon app-icon-{{.AppType}}" title="{{.AppType}}"></span> {{end}}go/{{.Name}}</a></td>
                             <td class="url-cell" title="{{.URL}}">{{.URL}}</td>
                             <td>{{.Description}}</td>
                             <td>{{.Tags}}</td>
@@ -35,6 +35,7 @@
                                 {{if .JSSnippet}}<span class="flag" title="Has JS snippet">JS</span>{{end}}
                                 {{if .CIDRAllow}}<span class="flag flag-restricted" title="IP restricted">IP</span>{{end}}
                                 {{if or (contains .URL "{args}") (contains .URL "{1}")}}<span class="flag flag-args" title="Accepts arguments">Args</span>{{end}}
+                                {{if .AppType}}<span class="flag flag-app" title="{{.AppType}}">{{.AppType}}</span>{{end}}
                             </td>
                             <td class="actions-cell">
                                 <a href="/admin/edit/{{.Name}}" class="btn btn-sm">Edit</a>

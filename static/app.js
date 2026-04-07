@@ -42,12 +42,15 @@
         linksContainer.innerHTML = links.map(l => {
             const tags = (l.tags || []).map(t => `<span class="link-card-tag">${esc(t)}</span>`).join('');
             const flags = [];
+            if (l.app_type) flags.push(`<span class="flag flag-app">${esc(l.app_type)}</span>`);
             if (l.has_js) flags.push('<span class="flag">JS</span>');
             if (l.restricted) flags.push('<span class="flag flag-restricted">IP</span>');
             if (l.has_args) flags.push('<span class="flag flag-args">Args</span>');
 
+            const appIcon = l.app_type ? `<span class="app-icon app-icon-${esc(l.app_type)}"></span> ` : '';
+
             return `<a href="/${esc(l.name)}" class="link-card">
-                <div class="link-card-name">go/${esc(l.name)}</div>
+                <div class="link-card-name">${appIcon}go/${esc(l.name)}</div>
                 ${l.description ? `<div class="link-card-desc">${esc(l.description)}</div>` : ''}
                 <div class="link-card-url">${esc(l.url)}</div>
                 ${tags ? `<div class="link-card-tags">${tags}</div>` : ''}
@@ -343,6 +346,97 @@
             e.preventDefault();
             if (debounceTimer) clearTimeout(debounceTimer);
             doSave();
+        });
+    }
+
+    // ===== Auto-detect app when URL is pasted =====
+    const urlFieldForDetect = document.getElementById('url');
+    const appDetectStatus = document.getElementById('app-detect-status');
+    const appTypeField = document.getElementById('app_type');
+    const apiKeyRow = document.getElementById('api-key-row');
+    const apiKeyField = document.getElementById('app_api_key');
+    const apiKeyHint = document.getElementById('api-key-hint');
+    const apiKeyHelp = document.getElementById('api-key-help');
+
+    if (urlFieldForDetect && appDetectStatus) {
+        let detectTimer = null;
+        let lastDetectedURL = '';
+
+        urlFieldForDetect.addEventListener('input', function() {
+            const url = this.value.trim();
+            // Only detect if it looks like a full URL and changed significantly
+            if (!url.match(/^https?:\/\/.+/) || url === lastDetectedURL) return;
+
+            if (detectTimer) clearTimeout(detectTimer);
+            detectTimer = setTimeout(function() {
+                lastDetectedURL = url;
+                appDetectStatus.hidden = false;
+                appDetectStatus.className = 'app-detect-status detecting';
+                appDetectStatus.innerHTML = '<span class="btn-spinner"></span> Detecting app...';
+
+                fetch('/api/detect?url=' + encodeURIComponent(url))
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.detected && data.app) {
+                            const app = data.app;
+                            appDetectStatus.className = 'app-detect-status detected';
+                            appDetectStatus.innerHTML = '<span class="app-icon app-icon-' + esc(app.type) + '"></span> ' +
+                                'Detected <strong>' + esc(app.name) + '</strong>' +
+                                (app.version ? ' v' + esc(app.version) : '');
+                            appDetectStatus.hidden = false;
+
+                            // Set app_type
+                            if (appTypeField) appTypeField.value = app.type;
+
+                            // Auto-fill description if empty
+                            const descField = document.getElementById('description');
+                            if (descField && !descField.value.trim() && app.description) {
+                                descField.value = app.description;
+                                descField.dispatchEvent(new Event('input', { bubbles: true }));
+                            }
+
+                            // Suggest URL template if different
+                            if (app.url_template && urlFieldForDetect.value !== app.url_template) {
+                                const suggestEl = document.createElement('div');
+                                suggestEl.className = 'url-suggest';
+                                suggestEl.innerHTML = 'Suggested URL: <a href="#" class="use-suggested-url">' + esc(app.url_template) + '</a>';
+                                const existing = appDetectStatus.parentNode.querySelector('.url-suggest');
+                                if (existing) existing.remove();
+                                appDetectStatus.parentNode.insertBefore(suggestEl, appDetectStatus.nextSibling);
+                                suggestEl.querySelector('.use-suggested-url').addEventListener('click', function(e) {
+                                    e.preventDefault();
+                                    urlFieldForDetect.value = app.url_template;
+                                    urlFieldForDetect.dispatchEvent(new Event('input', { bubbles: true }));
+                                    suggestEl.remove();
+                                });
+                            }
+
+                            // Show API key field if needed
+                            if (app.needs_api_key && apiKeyRow) {
+                                apiKeyRow.hidden = false;
+                                if (apiKeyHint) apiKeyHint.textContent = '(for ' + app.type + ')';
+                                if (apiKeyHelp) apiKeyHelp.textContent = app.api_key_hint || '';
+                            }
+                        } else {
+                            appDetectStatus.className = 'app-detect-status';
+                            appDetectStatus.textContent = 'No recognized app detected';
+                            if (appTypeField) appTypeField.value = '';
+                            setTimeout(() => { appDetectStatus.hidden = true; }, 3000);
+                        }
+                    })
+                    .catch(() => {
+                        appDetectStatus.className = 'app-detect-status';
+                        appDetectStatus.textContent = 'Detection failed';
+                        setTimeout(() => { appDetectStatus.hidden = true; }, 3000);
+                    });
+            }, 500); // 500ms debounce for detection
+        });
+
+        // Also handle paste event for immediate detection
+        urlFieldForDetect.addEventListener('paste', function() {
+            setTimeout(() => {
+                this.dispatchEvent(new Event('input', { bubbles: true }));
+            }, 50);
         });
     }
 

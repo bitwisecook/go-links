@@ -93,6 +93,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /opensearch.xml", s.handleOpenSearch)
 	mux.HandleFunc("GET /api/suggestions", s.handleSuggestions)
 	mux.HandleFunc("GET /api/links", s.handleAPILinks)
+	mux.HandleFunc("GET /api/detect", s.adminGuard(s.handleDetect))
 
 	// Catch-all redirect
 	mux.HandleFunc("GET /{keyword}", s.handleRedirect)
@@ -299,6 +300,8 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 	link.CIDRAllow = strings.TrimSpace(r.FormValue("cidr_allow"))
 	link.JSSnippet = r.FormValue("js_snippet")
 	link.CompletionsJS = r.FormValue("completions_js")
+	link.AppType = strings.ToLower(strings.TrimSpace(r.FormValue("app_type")))
+	link.AppAPIKey = strings.TrimSpace(r.FormValue("app_api_key"))
 
 	if err := s.store.Save(link); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to save: " + err.Error()})
@@ -365,6 +368,7 @@ type apiLink struct {
 	HasArgs     bool     `json:"has_args"`
 	HasJS       bool     `json:"has_js"`
 	Restricted  bool     `json:"restricted"`
+	AppType     string   `json:"app_type,omitempty"`
 }
 
 func (s *server) handleAPILinks(w http.ResponseWriter, r *http.Request) {
@@ -401,6 +405,7 @@ func (s *server) handleAPILinks(w http.ResponseWriter, r *http.Request) {
 			HasArgs:     strings.Contains(l.URL, "{args}") || strings.Contains(l.URL, "{1}"),
 			HasJS:       l.JSSnippet != "",
 			Restricted:  l.CIDRAllow != "",
+			AppType:     l.AppType,
 		})
 	}
 
