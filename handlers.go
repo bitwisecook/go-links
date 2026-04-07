@@ -20,6 +20,21 @@ var (
 	validNameRe = regexp.MustCompile(`^[a-z0-9\-]+$`)
 )
 
+// isValidURLTemplate checks that a URL uses http or https scheme.
+// URLs with {args}/{1} placeholders are normalized before parsing.
+func isValidURLTemplate(rawURL string) bool {
+	// Replace placeholders so url.Parse can handle it
+	normalized := strings.ReplaceAll(rawURL, "{args}", "PLACEHOLDER")
+	for i := 1; i <= 9; i++ {
+		normalized = strings.ReplaceAll(normalized, "{"+strconv.Itoa(i)+"}", "PLACEHOLDER")
+	}
+	u, err := url.Parse(normalized)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
+}
+
 type server struct {
 	store     *Store
 	cfg       *Config
@@ -243,6 +258,11 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "URL is required"})
 		return
 	}
+	// Validate URL scheme: only allow http/https (or templates containing placeholders)
+	if !isValidURLTemplate(urlVal) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "URL must use http:// or https:// scheme"})
+		return
+	}
 
 	clientIP := getClientIP(r)
 
@@ -311,7 +331,7 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDelete(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	name := strings.ToLower(strings.TrimSpace(r.PathValue("name")))
 	if name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Name is required"})
 		return

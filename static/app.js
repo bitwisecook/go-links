@@ -129,7 +129,7 @@
         const statusError = statusEl.querySelector('.autosave-error');
         const statusErrorMsg = statusEl.querySelector('.autosave-error-msg');
 
-        const isNew = linkForm.dataset.isNew === 'true';
+        let isNew = linkForm.dataset.isNew === 'true';
 
         function showGlobalStatus(which) {
             statusIdle.hidden = which !== 'idle';
@@ -174,8 +174,16 @@
             if (!urlField) return true;
             const v = urlField.value.trim();
             if (v === '') { setInvalid(urlField, 'URL is required'); return false; }
-            if (!/^https?:\/\/.+/.test(v) && !v.includes('{args}') && !v.includes('{1}')) {
-                setInvalid(urlField, 'Must be a valid URL (https://...)');
+            // Replace placeholders so URL can be parsed
+            const normalized = v.replace(/\{args\}/g, 'x').replace(/\{\d+\}/g, 'x');
+            try {
+                const parsed = new URL(normalized);
+                if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+                    setInvalid(urlField, 'URL must use http:// or https:// scheme');
+                    return false;
+                }
+            } catch (e) {
+                setInvalid(urlField, 'Must be a valid absolute URL (https://...)');
                 return false;
             }
             clearInvalid(urlField);
@@ -299,6 +307,7 @@
                         const isNewField = linkForm.querySelector('[name="is_new"]');
                         if (isNewField && isNewField.value === 'true') {
                             isNewField.value = 'false';
+                            isNew = false;
                             if (nameField) nameField.readOnly = true;
                             const newName = (nameField ? nameField.value.trim() : '');
                             if (newName) {
