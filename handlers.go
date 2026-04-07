@@ -168,6 +168,7 @@ func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
 		"Link":        link,
 		"Completions": completions,
 		"IsNew":       link == nil,
+		"ClientIP":    getClientIP(r).String(),
 	})
 }
 

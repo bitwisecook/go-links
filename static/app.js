@@ -73,6 +73,89 @@
             .catch(() => alert('Network error'));
     };
 
+    // CIDR field: auto-populate, IP presence warning
+    const cidrField = document.getElementById('cidr_allow');
+    if (cidrField) {
+        const clientIP = cidrField.dataset.clientIp;
+        let cidrWarning = document.createElement('div');
+        cidrWarning.className = 'cidr-warning';
+        cidrWarning.hidden = true;
+        cidrField.parentNode.insertBefore(cidrWarning, cidrField.nextSibling);
+
+        // Auto-fill on first focus if empty
+        let firstFocus = true;
+        cidrField.addEventListener('focus', function() {
+            if (firstFocus && this.value.trim() === '' && clientIP) {
+                this.value = clientIP + '/32';
+                const len = this.value.length;
+                this.setSelectionRange(len, len);
+            }
+            firstFocus = false;
+        });
+
+        function checkCIDRWarning() {
+            const val = cidrField.value.trim();
+            if (val === '') {
+                cidrWarning.hidden = true;
+                return;
+            }
+            if (!clientIP) { cidrWarning.hidden = true; return; }
+
+            // Check if client IP is in any of the listed CIDRs
+            const cidrs = val.split('\n').map(s => s.trim()).filter(Boolean);
+            const ipInList = cidrs.some(cidr => ipMatchesCIDR(clientIP, cidr));
+
+            if (!ipInList) {
+                cidrWarning.innerHTML = '<span class="warning-icon">&#9888;</span> Your IP <strong>' +
+                    esc(clientIP) + '</strong> is not in this list. On page reload, this link will be invisible to you. ' +
+                    '<a href="#" class="add-ip-link">Add my IP</a>';
+                cidrWarning.hidden = false;
+                cidrWarning.querySelector('.add-ip-link').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const current = cidrField.value.trim();
+                    cidrField.value = current + (current ? '\n' : '') + clientIP + '/32';
+                    checkCIDRWarning();
+                    cidrField.focus();
+                    const len = cidrField.value.length;
+                    cidrField.setSelectionRange(len, len);
+                });
+            } else {
+                cidrWarning.hidden = true;
+            }
+        }
+
+        // Simple IP-in-CIDR check (supports /32 exactly and basic prefix matching)
+        function ipMatchesCIDR(ip, cidr) {
+            const parts = cidr.split('/');
+            const cidrIP = parts[0];
+            const bits = parts.length > 1 ? parseInt(parts[1], 10) : 32;
+            if (isNaN(bits) || bits < 0 || bits > 32) return false;
+
+            const ipNum = ipToNum(ip);
+            const cidrNum = ipToNum(cidrIP);
+            if (ipNum === null || cidrNum === null) return false;
+
+            const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+            return (ipNum & mask) === (cidrNum & mask);
+        }
+
+        function ipToNum(ip) {
+            const parts = ip.split('.');
+            if (parts.length !== 4) return null;
+            let num = 0;
+            for (let i = 0; i < 4; i++) {
+                const v = parseInt(parts[i], 10);
+                if (isNaN(v) || v < 0 || v > 255) return null;
+                num = (num * 256) + v;
+            }
+            return num >>> 0;
+        }
+
+        cidrField.addEventListener('input', checkCIDRWarning);
+        // Check on page load too (for existing links)
+        checkCIDRWarning();
+    }
+
     // Edit form: async save with spinner/tick/cross
     const linkForm = document.getElementById('link-form');
     if (linkForm) {

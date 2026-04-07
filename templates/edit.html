@@ -49,6 +49,7 @@
                 <div class="form-group">
                     <label for="cidr_allow">IP Restrictions (CIDRs)</label>
                     <textarea id="cidr_allow" name="cidr_allow" rows="3"
+                        data-client-ip="{{.ClientIP}}"
                         placeholder="One CIDR per line, e.g.&#10;192.168.1.0/24&#10;10.0.0.0/8&#10;Leave empty for unrestricted access">{{if not .IsNew}}{{.Link.CIDRAllow}}{{end}}</textarea>
                 </div>
 

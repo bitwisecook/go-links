@@ -432,6 +432,28 @@ textarea { resize: vertical; }
     .search-box input { font-size: 1rem; padding: 0.6rem 0.75rem; }
 }
 
+/* CIDR warning */
+.cidr-warning {
+    margin-top: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+    line-height: 1.5;
+}
+.cidr-warning .warning-icon { margin-right: 0.25rem; }
+.cidr-warning .add-ip-link {
+    color: #0066cc;
+    font-weight: 600;
+    text-decoration: underline;
+}
+@media (prefers-color-scheme: dark) {
+    .cidr-warning { background: #3d2f00; color: #ffc107; border-color: #665200; }
+    .cidr-warning .add-ip-link { color: #58a6ff; }
+}
+
 /* iOS Safari specific */
 @supports (-webkit-touch-callout: none) {
     input, textarea, select { font-size: 16px; }
