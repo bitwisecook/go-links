@@ -494,12 +494,14 @@ textarea { resize: vertical; }
 .app-icon-netbox { background: #2196f3; border-radius: 50%; }
 .app-icon-openwebui { background: #6b46c1; border-radius: 50%; }
 
-/* App badge */
-.flag-app {
-    background: var(--code-bg);
-    color: var(--fg);
-    text-transform: capitalize;
-    font-size: 0.65rem;
+/* Auto-detected dot */
+.dot-auto {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    vertical-align: middle;
 }
 
 /* App detect status in edit form */

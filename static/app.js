@@ -42,7 +42,7 @@
         linksContainer.innerHTML = links.map(l => {
             const tags = (l.tags || []).map(t => `<span class="link-card-tag">${esc(t)}</span>`).join('');
             const flags = [];
-            if (l.app_type) flags.push(`<span class="flag flag-app" title="Detected: ${esc(l.app_type)}">Auto</span>`);
+            if (l.app_type) flags.push(`<span class="dot-auto" title="Auto-detected: ${esc(l.app_type)}"></span>`);
             if (l.has_js) flags.push('<span class="flag">JS</span>');
             if (l.restricted) flags.push('<span class="flag flag-restricted">IP</span>');
             if (l.has_args) flags.push('<span class="flag flag-args">Args</span>');
