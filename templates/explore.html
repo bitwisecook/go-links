@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "header"}}
+    <title>Explore - Go Links</title>
+</head>
+<body>
+    {{template "nav"}}
+    <main class="container">
+        <div class="explore">
+            <div class="search-box">
+                <input type="text" id="search" placeholder="Search links... (e.g. tv, mail, wiki)" autofocus autocomplete="off">
+            </div>
+            <div id="links" class="link-grid">
+                <div class="loading">Loading links...</div>
+            </div>
+        </div>
+    </main>
+    {{template "scripts"}}
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "header"}}
+    <title>Admin - Go Links</title>
+</head>
+<body>
+    {{template "nav"}}
+    <main class="container">
+        <div class="admin">
+            <div class="admin-header">
+                <h1>Manage Links</h1>
+                <a href="/admin/new" class="btn btn-primary">+ New Link</a>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>URL</th>
+                            <th>Description</th>
+                            <th>Tags</th>
+                            <th>Flags</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Links}}
+                        <tr id="row-{{.Name}}">
+                            <td><a href="/{{.Name}}" class="link-name">{{if .AppType}}<span class="app-icon app-icon-{{.AppType}}" title="{{.AppType}}"></span> {{end}}go/{{.Name}}</a></td>
+                            <td class="url-cell" title="{{.URL}}">{{.URL}}</td>
+                            <td>{{.Description}}</td>
+                            <td>{{.Tags}}</td>
+                            <td class="flags-cell">
+                                {{if .JSSnippet}}<span class="flag" title="Has JS snippet">JS</span>{{end}}
+                                {{if .CIDRAllow}}<span class="flag flag-restricted" title="IP restricted">IP</span>{{end}}
+                                {{if or (contains .URL "{args}") (contains .URL "{1}")}}<span class="flag flag-args" title="Accepts arguments">Args</span>{{end}}
+                                {{if .AppType}}<span class="dot-auto" title="Auto-detected: {{.AppType}}"></span>{{end}}
+                            </td>
+                            <td class="actions-cell">
+                                <a href="/admin/edit/{{.Name}}" class="btn btn-sm">Edit</a>
+                                <button class="btn btn-sm btn-danger" onclick="deleteLink('{{.Name}}')">Delete</button>
+                            </td>
+                        </tr>
+                        {{else}}
+                        <tr>
+                            <td colspan="6" class="empty-state">No links yet. <a href="/admin/new">Create one!</a></td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+    {{template "scripts"}}
+</body>
+</html>

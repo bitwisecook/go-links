@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "header"}}
+    <title>{{if .IsNew}}New Link{{else}}Edit {{.Link.Name}}{{end}} - Go Links</title>
+</head>
+<body>
+    {{template "nav"}}
+    <main class="container">
+        <div class="edit-page">
+            <h1>{{if .IsNew}}New Link{{else}}Edit go/{{.Link.Name}}{{end}}</h1>
+            <form id="link-form" class="edit-form" data-is-new="{{if .IsNew}}true{{else}}false{{end}}">
+                <input type="hidden" name="is_new" value="{{if .IsNew}}true{{else}}false{{end}}">
+                <input type="hidden" name="app_type" id="app_type" value="{{if not .IsNew}}{{.Link.AppType}}{{end}}">
+
+                <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="name">
+                    <div class="row-indicator"></div>
+                    <div class="form-group">
+                        <label for="name">Name <span class="required">*</span></label>
+                        <div class="input-prefix">
+                            <span class="prefix">go/</span>
+                            <input type="text" id="name" name="name" required pattern="[a-z0-9\-]+"
+                                title="Lowercase letters, numbers, and hyphens only"
+                                value="{{if not .IsNew}}{{.Link.Name}}{{end}}"
+                                {{if not .IsNew}}readonly{{end}}
+                                placeholder="keyword">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="url">
+                    <div class="row-indicator"></div>
+                    <div class="form-group">
+                        <label for="url">URL <span class="required">*</span></label>
+                        <input type="text" id="url" name="url" required
+                            value="{{if not .IsNew}}{{.Link.URL}}{{end}}"
+                            placeholder="https://example.com/search?q={args}">
+                        <div id="app-detect-status" class="app-detect-status" hidden></div>
+                        <small class="form-hint">Use <code>{args}</code> for arguments, or <code>{1}</code> <code>{2}</code> for positional args. Paste a URL to auto-detect the app.</small>
+                    </div>
+                </div>
+
+                <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="description">
+                    <div class="row-indicator"></div>
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <input type="text" id="description" name="description"
+                            value="{{if not .IsNew}}{{.Link.Description}}{{end}}"
+                            placeholder="What does this link do?">
+                    </div>
+                </div>
+
+                <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="tags">
+                    <div class="row-indicator"></div>
+                    <div class="form-group">
+                        <label for="tags">Tags</label>
+                        <input type="text" id="tags" name="tags"
+                            value="{{if not .IsNew}}{{.Link.Tags}}{{end}}"
+                            placeholder="comma, separated, tags">
+                    </div>
+                </div>
+
+                <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="app_api_key" id="api-key-row"
+                    {{if .IsNew}}hidden{{else if not .Link.AppType}}hidden{{end}}>
+                    <div class="row-indicator"></div>
+                    <div class="form-group">
+                        <label for="app_api_key">API Key <span id="api-key-hint" class="form-hint-inline">{{if not .IsNew}}{{if .Link.AppType}}(for {{.Link.AppType}}){{end}}{{end}}</span></label>
+                        <input type="password" id="app_api_key" name="app_api_key"
+                            value="{{if not .IsNew}}{{.Link.AppAPIKey}}{{end}}"
+                            placeholder="Paste API key for app completions"
+                            autocomplete="off">
+                        <small class="form-hint" id="api-key-help"></small>
+                    </div>
+                </div>
+
+                <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="cidr_allow">
+                    <div class="row-indicator"></div>
+                    <div class="form-group">
+                        <label for="cidr_allow">IP Restrictions (CIDRs)</label>
+                        <textarea id="cidr_allow" name="cidr_allow" rows="3"
+                            data-client-ip="{{.ClientIP}}"
+                            placeholder="One CIDR per line, e.g.&#10;192.168.1.0/24&#10;10.0.0.0/8&#10;Leave empty for unrestricted access">{{if not .IsNew}}{{.Link.CIDRAllow}}{{end}}</textarea>
+                    </div>
+                </div>
+
+                <details class="advanced-section">
+                    <summary>Advanced Options</summary>
+
+                    <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="completions">
+                        <div class="row-indicator"></div>
+                        <div class="form-group">
+                            <label for="completions">Argument Completions</label>
+                            <textarea id="completions" name="completions" rows="5"
+                                placeholder="One per line: value|description&#10;severance|Severance (TV Show)&#10;seven|Se7en (Movie)">{{range .Completions}}{{.Value}}{{if .Description}}|{{.Description}}{{end}}
+{{end}}</textarea>
+                            <small class="form-hint">Used for OpenSearch tab completion suggestions. Auto-populated for recognized apps with an API key.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="completions_js">
+                        <div class="row-indicator"></div>
+                        <div class="form-group">
+                            <label for="completions_js">Completions JS <span class="flag">Advanced</span></label>
+                            <textarea id="completions_js" name="completions_js" rows="5" class="code-input"
+                                placeholder="// Function body: receives 'query', return Promise of [{value, description}]&#10;return fetch('/api/endpoint?q=' + encodeURIComponent(query))&#10;  .then(r => r.json())&#10;  .then(d => d.map(i => ({value: i.name, description: i.type})))">{{if not .IsNew}}{{.Link.CompletionsJS}}{{end}}</textarea>
+                            <small class="form-hint">Client-side JS for dynamic completions (not yet implemented in explore page)</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row{{if not .IsNew}} row-saved{{end}}" data-field="js_snippet">
+                        <div class="row-indicator"></div>
+                        <div class="form-group">
+                            <label for="js_snippet">JS Snippet <span class="flag">Advanced</span></label>
+                            <textarea id="js_snippet" name="js_snippet" rows="8" class="code-input"
+                                placeholder="// Runs instead of redirect. Variables: args, url&#10;// Example: conditional redirect&#10;if (args === 'new') {&#10;  window.location = url + '/new';&#10;} else {&#10;  window.location = url + '/search?q=' + encodeURIComponent(args);&#10;}">{{if not .IsNew}}{{.Link.JSSnippet}}{{end}}</textarea>
+                            <small class="form-hint">Executes in the browser instead of a redirect. Has access to <code>args</code> and <code>url</code> variables.</small>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="form-actions">
+                    <a href="/admin" class="btn">&larr; Back to Admin</a>
+                    <div id="autosave-status" class="autosave-status">
+                        <span class="autosave-idle"></span>
+                        <span class="autosave-saving" hidden><span class="btn-spinner"></span> Saving&hellip;</span>
+                        <span class="autosave-saved" hidden>&#10003; All changes saved</span>
+                        <span class="autosave-error" hidden>&#10007; <span class="autosave-error-msg"></span></span>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </main>
+    {{template "scripts"}}
+</body>
+</html>
