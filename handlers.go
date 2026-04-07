@@ -156,11 +156,9 @@ func (s *server) handleEdit(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		clientIP := getClientIP(r)
-		if !isLinkVisible(link, clientIP) {
-			http.NotFound(w, r)
-			return
-		}
+		// Note: no CIDR check here - edit page must remain accessible
+		// even after autosave changes CIDRs to exclude the current user.
+		// The CIDR warning in the UI handles this case.
 		completions, _ = s.store.allCompletions(name)
 	}
 

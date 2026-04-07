@@ -191,32 +191,72 @@ textarea { resize: vertical; }
     margin-top: 1.5rem;
 }
 
-/* Save Status */
-.save-status {
-    font-size: 0.875rem;
-    font-weight: 500;
+/* Form rows with left indicator */
+.form-row {
+    display: flex;
+    gap: 0;
+    position: relative;
 }
-.save-status.error { color: var(--danger); }
-.save-status.success { color: var(--success); }
+.form-row .form-group {
+    flex: 1;
+    min-width: 0;
+}
+.row-indicator {
+    width: 4px;
+    border-radius: 2px;
+    margin-right: 0.75rem;
+    flex-shrink: 0;
+    transition: background-color 0.2s;
+    background: transparent;
+}
 
-/* Button states: spinner, tick, cross */
+/* Row states */
+.form-row.row-saved .row-indicator { background: var(--success); }
+.form-row.row-editing .row-indicator { background: #f0ad4e; }
+.form-row.row-saving .row-indicator { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.form-row.row-error .row-indicator { background: var(--danger); }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* Autosave global status */
+.autosave-status {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 1.5rem;
+}
+.autosave-saving { color: var(--muted); display: inline-flex; align-items: center; gap: 0.35rem; }
+.autosave-saved { color: var(--success); }
+.autosave-error { color: var(--danger); }
+.autosave-idle { color: var(--muted); }
+
 .btn-spinner {
     display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: #fff;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.btn-tick { color: #fff; font-weight: bold; }
-.btn-cross { color: #fff; font-weight: bold; }
-
-.btn-primary.saving { background: var(--accent); opacity: 0.8; pointer-events: none; }
-.btn-primary.success { background: var(--success); border-color: var(--success); }
-.btn-primary.error { background: var(--danger); border-color: var(--danger); }
+/* Field validation states */
+.field-invalid {
+    border-color: var(--danger) !important;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.15) !important;
+}
+.field-error {
+    color: var(--danger);
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-top: 0.2rem;
+}
 
 /* Advanced Section */
 .advanced-section {
