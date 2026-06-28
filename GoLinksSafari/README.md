@@ -17,14 +17,19 @@ trigger word, and which engines to intercept.
 
 Chrome has an `omnibox` keyword API; **Safari does not**, and Safari can't install
 OpenSearch engines either. So an extension cannot see what you type in the address
-bar *before* it becomes a navigation. The only hooks available are navigation
-redirects (`declarativeNetRequest`), which is exactly what this extension uses:
+bar *before* it becomes a navigation. We watch top-level navigations with
+`webNavigation.onBeforeNavigate` and redirect with `tabs.update` — Safari's
+`declarativeNetRequest` `regexSubstitution` redirects are unreliable, so we avoid
+them. Two forms are handled:
 
-- **`go thing`** only works if your **default search engine** is one we intercept
-  (Google, DuckDuckGo, Bing, Yahoo, Ecosia, Brave, Startpage — toggleable in
-  settings). It relies on Safari routing the query to that engine.
-- **`go/thing`** is bullet-proof: it never depends on the search engine, because
-  Safari resolves `go/…` as a hostname. If in doubt, use the slash form.
+- **`go thing`** (recommended) — your **default search engine** is asked to search
+  "go thing"; we catch that and redirect. Works when the default engine is one we
+  intercept (Google, DuckDuckGo, Bing, Yahoo, Ecosia, Brave, Startpage — toggleable).
+- **`go/thing`** — Safari *sometimes* resolves `go/…` as the host `http://go/…`
+  (which we redirect) and sometimes treats it as a search; prefer the space form.
+
+> The extension must be granted **Allow on Every Website** — otherwise Safari never
+> delivers the search-page navigation to it and nothing happens.
 
 The redirect target is the existing go-links server in this repo, which already
 understands `name`, `name args`, and `name+arg1+arg2` and 302-redirects
@@ -84,7 +89,7 @@ settings panel) to change:
 - **Engines** — which default-search-engine queries to intercept.
 
 Settings are stored in `browser.storage.local`; the background worker rebuilds its
-`declarativeNetRequest` rules immediately on save.
+its in-memory config immediately on save.
 
 ## Project layout
 
@@ -104,7 +109,7 @@ GoLinksSafari/
     ├── GoLinksMacExtension.entitlements
     └── Resources/
         ├── manifest.json
-        ├── background.js           # builds dynamic DNR redirect rules from settings
+        ├── background.js           # webNavigation -> tabs.update redirect, from settings
         ├── popup.{html,css,js}     # quick launcher + live suggestions
         ├── options.{html,css,js}   # settings UI
         └── images/                 # generated icons

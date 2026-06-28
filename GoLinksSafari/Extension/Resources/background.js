@@ -1,24 +1,19 @@
-// Go Links — background service worker.
+// Go Links — background.
 //
-// Safari has no `omnibox` API (unlike Chrome), so we cannot register a keyword
-// that lights up the address bar directly. Instead we use declarativeNetRequest
-// to redirect, before the request ever leaves the device, in two situations:
+// Safari has no `omnibox` API, and its declarativeNetRequest `regexSubstitution`
+// redirects are unreliable. So instead we watch top-level navigations with
+// webNavigation.onBeforeNavigate and redirect with tabs.update — both of which
+// Safari supports well. Two cases are handled, before the page loads:
 //
-//   1. "go <thing>"  — the user's DEFAULT search engine is asked to search for
-//                      "go something". We match that search URL and rewrite it
-//                      to the go-links server.
-//   2. "go/<thing>"  — Safari treats this as the URL http://go/<thing> (single
-//                      label host). We rewrite http(s)://go/* to the server.
+//   1. "go <thing>"  — the default search engine is asked to search "go thing";
+//                      we catch that and jump to the go-links server.
+//   2. "go/<thing>"  — Safari resolves this as http://go/<thing>; we rewrite it.
 //
-// All rules are built dynamically from user settings (server URL, keyword, which
-// engines are enabled), so everything is configurable from the options page.
+// Everything is driven by user settings (server URL, keyword, engines).
 
 const DEFAULTS = {
-  // Base URL of the go-links server. No trailing slash.
   serverBase: "https://go.bragi0.com",
-  // The trigger word typed before the link name.
   keyword: "go",
-  // Which default-search-engine queries to intercept for the "go <thing>" form.
   engines: {
     google: true,
     duckduckgo: true,
@@ -28,170 +23,119 @@ const DEFAULTS = {
     brave: true,
     startpage: true,
   },
-  // Also redirect the bullet-proof "go/<thing>" slash form (http://go/*).
   slashRedirect: true,
 };
 
-// Search engines we know how to intercept. Each builds a regexFilter that:
-//   - matches the engine's results URL,
-//   - requires the query parameter to START WITH "<keyword>" followed by a
-//     separator (+ or %20),
-//   - captures everything after that separator up to the next & as group 1.
-// The captured group is handed verbatim to the go-links server, which already
-// knows how to split "name+arg1+arg2" / "name arg1 arg2" into a link + args.
+// Each engine: does this URL look like that engine's results page, and which
+// query parameter holds the typed text.
 const ENGINES = {
-  google: {
-    label: "Google",
-    filter: (kw) =>
-      `^https?://(?:[a-z0-9-]+\\.)*google\\.[a-z.]+/search\\?(?:.*&)?q=${kw}(?:\\+|%20)(.+?)(?:&.*)?$`,
-  },
-  duckduckgo: {
-    label: "DuckDuckGo",
-    filter: (kw) =>
-      `^https?://(?:[a-z0-9-]+\\.)*(?:duckduckgo\\.com|duck\\.com)/(?:\\?|[^?]*\\?)(?:.*&)?q=${kw}(?:\\+|%20)(.+?)(?:&.*)?$`,
-  },
-  bing: {
-    label: "Bing",
-    filter: (kw) =>
-      `^https?://(?:www\\.)?bing\\.com/search\\?(?:.*&)?q=${kw}(?:\\+|%20)(.+?)(?:&.*)?$`,
-  },
-  yahoo: {
-    label: "Yahoo",
-    filter: (kw) =>
-      `^https?://(?:[a-z0-9-]+\\.)*search\\.yahoo\\.com/search\\?(?:.*&)?p=${kw}(?:\\+|%20)(.+?)(?:&.*)?$`,
-  },
-  ecosia: {
-    label: "Ecosia",
-    filter: (kw) =>
-      `^https?://(?:www\\.)?ecosia\\.org/search\\?(?:.*&)?q=${kw}(?:\\+|%20)(.+?)(?:&.*)?$`,
-  },
-  brave: {
-    label: "Brave",
-    filter: (kw) =>
-      `^https?://search\\.brave\\.com/search\\?(?:.*&)?q=${kw}(?:\\+|%20)(.+?)(?:&.*)?$`,
-  },
-  startpage: {
-    label: "Startpage",
-    filter: (kw) =>
-      `^https?://(?:www\\.)?startpage\\.com/[^?]*\\?(?:.*&)?query=${kw}(?:\\+|%20)(.+?)(?:&.*)?$`,
-  },
+  google: { label: "Google", param: "q",
+    match: (u) => /(^|\.)google\.[a-z.]+$/.test(u.hostname) && u.pathname.startsWith("/search") },
+  duckduckgo: { label: "DuckDuckGo", param: "q",
+    match: (u) => /(^|\.)(duckduckgo\.com|duck\.com)$/.test(u.hostname) },
+  bing: { label: "Bing", param: "q",
+    match: (u) => /(^|\.)bing\.com$/.test(u.hostname) && u.pathname.startsWith("/search") },
+  yahoo: { label: "Yahoo", param: "p",
+    match: (u) => /(^|\.)search\.yahoo\.com$/.test(u.hostname) && u.pathname.startsWith("/search") },
+  ecosia: { label: "Ecosia", param: "q",
+    match: (u) => /(^|\.)ecosia\.org$/.test(u.hostname) && u.pathname.startsWith("/search") },
+  brave: { label: "Brave", param: "q",
+    match: (u) => u.hostname === "search.brave.com" && u.pathname.startsWith("/search") },
+  startpage: { label: "Startpage", param: "query",
+    match: (u) => /(^|\.)startpage\.com$/.test(u.hostname) },
 };
 
-// Escape a user-supplied keyword for safe embedding inside a regex.
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+let cfg = null;
 
-// Strip a trailing slash from the server base.
-function normalizeBase(base) {
-  return (base || "").trim().replace(/\/+$/, "");
-}
+function normalizeBase(b) { return (b || "").trim().replace(/\/+$/, ""); }
 
-async function getConfig() {
+async function loadConfig() {
   const stored = await browser.storage.local.get("config");
-  return { ...DEFAULTS, ...(stored.config || {}),
-           engines: { ...DEFAULTS.engines, ...((stored.config || {}).engines || {}) } };
+  const c = stored.config || {};
+  cfg = { ...DEFAULTS, ...c, engines: { ...DEFAULTS.engines, ...(c.engines || {}) } };
+  return cfg;
 }
 
-// Build the full dynamic rule set from the current config.
-function buildRules(cfg) {
+// "keyword arg1 arg2" remainder -> server path "arg1+arg2" (server splits on +).
+function toServerPath(rest) {
+  return rest.trim().split(/\s+/).map(encodeURIComponent).join("+");
+}
+
+// Resolve a navigation URL to a go-links target, or null if it isn't one of ours.
+function resolveTarget(rawUrl) {
+  if (!cfg) return null;
   const base = normalizeBase(cfg.serverBase) || normalizeBase(DEFAULTS.serverBase);
-  const kw = escapeRegex((cfg.keyword || DEFAULTS.keyword).trim());
-  const rules = [];
-  let id = 1;
+  const kw = (cfg.keyword || DEFAULTS.keyword).trim().toLowerCase();
 
-  // (1) "go <thing>" via each enabled search engine.
-  for (const [key, engine] of Object.entries(ENGINES)) {
+  let u;
+  try { u = new URL(rawUrl); } catch { return null; }
+
+  // Never touch navigations that already point at the server.
+  let serverHost = "";
+  try { serverHost = new URL(base).host; } catch {}
+  if (serverHost && u.host === serverHost) return null;
+
+  // (2) "go/thing" — single-label host equal to the keyword.
+  if (cfg.slashRedirect && u.hostname.toLowerCase() === kw) {
+    return base + u.pathname + u.search;
+  }
+
+  // (1) "go thing" — the default search engine's query starts with the keyword.
+  for (const [key, eng] of Object.entries(ENGINES)) {
     if (cfg.engines && cfg.engines[key] === false) continue;
-    rules.push({
-      id: id++,
-      priority: 1,
-      action: {
-        type: "redirect",
-        redirect: { regexSubstitution: `${base}/\\1` },
-      },
-      condition: {
-        regexFilter: engine.filter(kw),
-        resourceTypes: ["main_frame"],
-      },
-    });
+    if (!eng.match(u)) continue;
+    const q = u.searchParams.get(eng.param);
+    if (!q) return null;
+    const parts = q.trim().split(/\s+/);
+    if (parts.length >= 2 && parts[0].toLowerCase() === kw) {
+      return base + "/" + toServerPath(parts.slice(1).join(" "));
+    }
+    return null; // engine matched but not a "go …" query
   }
-
-  // (2) "go/<thing>" slash form: http(s)://go/<rest> -> server/<rest>.
-  if (cfg.slashRedirect) {
-    rules.push({
-      id: id++,
-      priority: 1,
-      action: { type: "redirect", redirect: { regexSubstitution: `${base}/\\1` } },
-      condition: {
-        regexFilter: `^https?://${kw}/(.*)$`,
-        resourceTypes: ["main_frame"],
-      },
-    });
-    // Bare "go/" or "go" -> server home.
-    rules.push({
-      id: id++,
-      priority: 1,
-      action: { type: "redirect", redirect: { regexSubstitution: `${base}/` } },
-      condition: {
-        regexFilter: `^https?://${kw}/?$`,
-        resourceTypes: ["main_frame"],
-      },
-    });
-  }
-
-  return rules;
+  return null;
 }
 
-// Replace every dynamic rule with a freshly built set.
-async function applyRules() {
-  const cfg = await getConfig();
-  const rules = buildRules(cfg);
-  const existing = await browser.declarativeNetRequest.getDynamicRules();
-  await browser.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: existing.map((r) => r.id),
-    addRules: rules,
-  });
-  return rules.length;
-}
-
-// First run: persist defaults so the options page has something to show.
-async function ensureConfig() {
-  const stored = await browser.storage.local.get("config");
-  if (!stored.config) {
-    await browser.storage.local.set({ config: DEFAULTS });
+async function onBeforeNavigate(details) {
+  if (details.frameId !== 0) return;      // top-level frame only
+  if (!cfg) await loadConfig();
+  const target = resolveTarget(details.url);
+  if (!target) return;
+  try {
+    await browser.tabs.update(details.tabId, { url: target });
+  } catch (e) {
+    // tab may have closed; ignore
   }
 }
+
+browser.webNavigation.onBeforeNavigate.addListener(onBeforeNavigate);
+
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.config) loadConfig();
+});
 
 browser.runtime.onInstalled.addListener(async () => {
-  await ensureConfig();
-  await applyRules();
+  const stored = await browser.storage.local.get("config");
+  if (!stored.config) await browser.storage.local.set({ config: DEFAULTS });
+  await loadConfig();
 });
 
-browser.runtime.onStartup?.addListener(async () => {
-  await applyRules();
-});
+browser.runtime.onStartup?.addListener(loadConfig);
 
-// Rebuild whenever settings change.
-browser.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.config) {
-    applyRules();
-  }
-});
-
-// Let the popup / options page query and force-refresh.
+// Config + engine labels for the popup / options page.
 browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     if (msg && msg.type === "getConfig") {
-      sendResponse({ config: await getConfig(), defaults: DEFAULTS, engines:
-        Object.fromEntries(Object.entries(ENGINES).map(([k, v]) => [k, v.label])) });
+      sendResponse({
+        config: await loadConfig(),
+        defaults: DEFAULTS,
+        engines: Object.fromEntries(Object.entries(ENGINES).map(([k, v]) => [k, v.label])),
+      });
     } else if (msg && msg.type === "rebuild") {
-      const n = await applyRules();
-      sendResponse({ ok: true, ruleCount: n });
+      await loadConfig();
+      sendResponse({ ok: true });
     }
   })();
-  return true; // async response
+  return true;
 });
 
-// Make sure rules exist even on a plain worker wake-up.
-ensureConfig().then(applyRules);
+loadConfig();
