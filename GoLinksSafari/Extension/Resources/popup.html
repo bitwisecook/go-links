@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="popup.css">
+  <title>Go Links</title>
+</head>
+<body>
+  <header>
+    <span class="logo">go</span>
+    <span class="server" id="server">…</span>
+  </header>
+
+  <form id="form" autocomplete="off">
+    <input id="q" type="text" placeholder="keyword args…" autofocus
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+  </form>
+
+  <ul id="suggestions" role="listbox"></ul>
+
+  <footer>
+    <span class="hint">↵ jumps · type <code>go thing</code> in the address bar too</span>
+    <button id="opts" type="button">Settings</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

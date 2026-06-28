@@ -1,0 +1,9 @@
+# XcodeGen regenerates this from project.yml — do not commit.
+GoLinks.xcodeproj/
+
+# Build output
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store

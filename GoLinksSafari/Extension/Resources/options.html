@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="options.css">
+  <title>Go Links — Settings</title>
+</head>
+<body>
+  <main>
+    <h1><span class="logo">go</span> Links settings</h1>
+
+    <section>
+      <label for="serverBase">Server URL</label>
+      <input id="serverBase" type="url" inputmode="url" placeholder="https://go.bragi0.com"
+             autocapitalize="off" autocorrect="off" spellcheck="false">
+      <p class="help">Where your go-links server lives. Lookups become <code>SERVER/&lt;name&gt;</code>.</p>
+    </section>
+
+    <section>
+      <label for="keyword">Trigger word</label>
+      <input id="keyword" type="text" placeholder="go" maxlength="20"
+             autocapitalize="off" autocorrect="off" spellcheck="false">
+      <p class="help">Type this before a link name: <code>&lt;word&gt; thing</code> or <code>&lt;word&gt;/thing</code>.</p>
+    </section>
+
+    <section>
+      <label class="switch">
+        <input id="slashRedirect" type="checkbox">
+        <span>Redirect the <code>go/thing</code> slash form (recommended — works with any search engine)</span>
+      </label>
+    </section>
+
+    <section>
+      <h2>Intercept the <code>go thing</code> search form for…</h2>
+      <p class="help">Only your <em>default</em> search engine actually matters; enable whichever one(s) you use.</p>
+      <div id="engines" class="engines"></div>
+    </section>
+
+    <div class="actions">
+      <button id="save" type="button">Save</button>
+      <button id="reset" type="button" class="secondary">Reset to defaults</button>
+      <span id="status" class="status"></span>
+    </div>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

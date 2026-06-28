@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Go Links",
+  "version": "1.0",
+  "description": "Type `go <thing>` or `go/<thing>` in the Safari address bar to jump through your go-links server.",
+
+  "icons": {
+    "48": "images/icon-48.png",
+    "96": "images/icon-96.png",
+    "128": "images/icon-128.png",
+    "256": "images/icon-256.png",
+    "512": "images/icon-512.png"
+  },
+
+  "background": {
+    "scripts": [ "background.js" ],
+    "persistent": false
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Go Links",
+    "default_icon": {
+      "16": "images/icon-16.png",
+      "19": "images/icon-19.png",
+      "32": "images/icon-32.png",
+      "38": "images/icon-38.png",
+      "48": "images/icon-48.png",
+      "72": "images/icon-72.png"
+    }
+  },
+
+  "options_ui": {
+    "page": "options.html"
+  },
+
+  "permissions": [
+    "declarativeNetRequest",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}

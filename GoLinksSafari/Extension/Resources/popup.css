@@ -1,0 +1,92 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1c1c1e;
+  --muted: #8e8e93;
+  --line: #e5e5ea;
+  --accent: #16a34a;
+  --sel: rgba(22, 163, 74, 0.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --fg: #f2f2f7;
+    --muted: #98989f;
+    --line: #38383a;
+    --sel: rgba(45, 200, 110, 0.22);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  font: 14px/1.4 -apple-system, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+body { width: 320px; padding: 12px; }
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.logo {
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(180deg, #34c759, #16a34a);
+  border-radius: 7px;
+  padding: 2px 8px;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+.server { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#q {
+  width: 100%;
+  font-size: 16px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+}
+#q:focus { border-color: var(--accent); }
+
+#suggestions { list-style: none; margin: 8px 0 0; padding: 0; max-height: 260px; overflow-y: auto; }
+#suggestions li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+#suggestions li.active, #suggestions li:hover { background: var(--sel); }
+#suggestions .name { font-weight: 600; }
+#suggestions .name b { color: var(--accent); }
+#suggestions .desc { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#suggestions:empty { display: none; }
+
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  gap: 8px;
+}
+.hint { color: var(--muted); font-size: 11px; }
+.hint code { background: var(--sel); padding: 0 3px; border-radius: 4px; }
+button#opts {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+}
+button#opts:hover { border-color: var(--accent); color: var(--accent); }
